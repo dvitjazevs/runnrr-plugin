@@ -1,0 +1,18 @@
+{
+  "name": "dvitjazevs",
+  "owner": {
+    "name": "Dmitrijs Vitjazevs"
+  },
+  "metadata": {
+    "description": "Plugins by Dmitrijs Vitjazevs",
+    "homepage": "https://github.com/dvitjazevs/runnrr-plugin"
+  },
+  "plugins": [
+    {
+      "name": "runnrr",
+      "version": "0.4.0",
+      "source": "./plugin",
+      "description": "Personal Kanban board — push tasks, decisions, and notes from any Claude session"
+    }
+  ]
+}
