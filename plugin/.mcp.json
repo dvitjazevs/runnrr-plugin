@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "runnrr-local": {
+      "type": "http",
+      "url": "http://localhost:19840/mcp"
+    },
+    "runnrr": {
+      "type": "http",
+      "url": "${RUNNRR_URL:-http://localhost:3000}/api/mcp",
+      "headers": {
+        "Authorization": "Bearer ${RUNNRR_API_TOKEN}"
+      }
+    }
+  }
+}

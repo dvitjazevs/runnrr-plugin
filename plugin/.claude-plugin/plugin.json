@@ -1,17 +1,9 @@
 {
   "name": "runnrr",
-  "version": "0.4.0",
-  "description": "Personal Kanban board — push tasks, decisions, and notes from any Claude session",
+  "version": "0.4.2",
+  "description": "Push tasks, decisions, and notes to your runnrr Kanban board from any Claude session; pull task context back into the conversation.",
   "author": {
-    "name": "Dmitrijs Vitjazevs"
+    "name": "DV"
   },
-  "repository": "https://github.com/dvitjazevs/runnrr-plugin",
-  "license": "MIT",
-  "keywords": [
-    "kanban",
-    "tasks",
-    "notes",
-    "decisions",
-    "productivity"
-  ]
+  "keywords": ["tasks", "kanban", "runnrr", "productivity", "decisions", "notes"]
 }
