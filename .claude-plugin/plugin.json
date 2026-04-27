@@ -1,6 +1,6 @@
 {
   "name": "runnrr",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "Personal Kanban board \u2014 push tasks, decisions, and notes from any Claude session",
   "author": {
     "name": "Dmitrijs Vitjazevs"
