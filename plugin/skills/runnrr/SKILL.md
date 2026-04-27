@@ -4,78 +4,50 @@ description: >
   This skill should be used when the user says "add to runnrr", "push to runnrr",
   "track this", "add these decisions", "add these tasks", "log this to the board",
   "pick up [task] from runnrr", "what's on my runnrr board", "work on the X card",
-  "mark [task] done", "save this note", "share this note", or any similar phrase
-  about their runnrr Kanban board, decisions log, or notes.
-version: 0.4.2
+  "mark [task] done", "save a note", "save this note", "take a note", "log this as a note",
+  "share this note", or any similar phrase about their runnrr Kanban board, decisions
+  log, or notes.
+version: 0.5.0
 ---
 
 # Runnrr — Personal Kanban Board + Decisions + Notes
 
-Runnrr is a personal Kanban board that connects meetings (Granola), tasks, decisions, and notes to Claude.
+Runnrr is a personal Kanban board that connects meetings (Granola), tasks, decisions, and notes to Claude. Everything lives locally in the runnrr macOS app and is reached through one MCP server.
 
-**Scope of this skill: both runnrr surfaces.** The plugin's `.mcp.json` registers two MCP servers:
-- **`runnrr-local`** at `localhost:19840` — the native macOS app's MCP. Full surface: tasks, files, tags, columns, due dates, priorities, decisions, `complete_task` / `move_task` / `delete_task` / `set_due_date`, `attach_file` (creates a real file on disk and links it), `tag_file`, `read_file` / `list_files` / `delete_file`, etc.
-- **`runnrr`** at `${RUNNRR_URL:-https://runnrr.io}/api/mcp` — the web service. Narrower surface: tasks, decisions, notes (with public sharing).
+**One server, no routing.** This plugin registers a single MCP server, `runnrr-local`, at `http://localhost:19840/mcp`. It runs inside the runnrr-native macOS app and reads from the local SQLite database + on-disk markdown vault. No bearer token, no internet round-trip, no sign-in required for tools to work.
 
-**Local-first routing.** Use `runnrr-local` tools whenever they're available — that's where the user's macOS app reads. Only fall back to `runnrr` (web) when the native MCP isn't reachable (`localhost:19840` not listening), or when the intent requires a web-only capability (notes, public link sharing). **Never push to web when the user is looking at the native board** — they won't see the card. Fall back to curl only as a last resort if both MCPs are disconnected.
-
-## Dual-MCP routing rule
-
-A user may have both MCPs connected at the same time:
-- **Native** (`localhost:19840`) — runnrr-native macOS app, exposes the full task lifecycle, files, tags, columns, due dates, priorities, scan_granola.
-- **Web** (`runnrr.io/api/mcp`, this skill's primary target) — tasks, decisions, notes (with sharing), plus the parity tools landing in Phase 4a.
-
-When both are connected, **prefer native for any tool that exists on both** — file system, due dates, columns, priority, tags. Web is the fallback only when native isn't reachable. On the first runnrr action in a session, name the surface you routed to so the user has a clear mental model:
-
-> "Routing through the native runnrr MCP at `localhost:19840` (preferred when both are connected)."
-
-If the user's request needs a tool that exists only on the web side (e.g. `save_note` / `share_note`), use the web MCP and say so explicitly.
-
-**Base URL**: `$RUNNRR_URL` (default: `https://runnrr.io`)
-**Auth**: `Authorization: Bearer $RUNNRR_API_TOKEN` on all requests
+If the runnrr macOS app isn't running, none of these tools will work — the user needs to launch the app.
 
 ---
 
-## Available MCP tools (web)
+## Tool surface
 
-Read: `list_tasks`, `get_board_summary`, `find_task_by_title({ query })`, `get_task_context({ id })`, `list_notes`.
+**Tasks:** `create_task`, `update_task`, `complete_task`, `move_task`, `delete_task`, `set_due_date`, `find_task_by_title`, `get_task_context`, `list_tasks`, `get_board_summary`
 
-Write: `create_task({ title, description?, context? })`, `update_task({ id, title?, status?, description?, context? })`, `save_decision({ title, description?, area? })`, `save_note({ content })`, `share_note({ note_id })`.
+**Board structure:** `list_columns`, `list_tags`
 
-Semantics worth knowing:
+**Decisions:** `save_decision` (writes to the Decisions log, not the Kanban board)
 
-- **`update_task` `status`** is a column *title* (case-insensitive match against the user's actual columns, e.g. `"To Do"`, `"Doing"`, `"Done"`). It cannot move a task into the Inbox. If no column matches, the call returns the available column titles as an error.
-- **`create_task`** always lands in the first non-Inbox standard column. It never places into Inbox.
-- **`context`** is markdown attached to a task as deeper background — useful when handing off to Claude Code or capturing a meeting transcript snippet. On `update_task` it replaces existing context.
-- **`save_decision`** writes to the Decisions log (separate table), not the Kanban board.
-- **`save_note`** writes to Notes (separate table). `share_note` makes a note public and returns `https://runnrr.io/n/{token}`.
-- **Notes are web-only.** The native macOS app does not expose `save_note` / `list_notes` / `share_note` via its local MCP. If a user is on native-only and asks to save or share a note, tell them this requires the runnrr web service.
+**Files (= notes):** `create_file`, `read_file`, `list_files`, `attach_file`, `delete_file`, `tag_file`
+
+Notes ARE markdown files in the user's local vault. There is no separate "notes" tool. When the user says *"save a note"*, use `create_file` with `subfolder: "notes"` and a slugified filename — see the NOTES MODE below for the exact pattern.
 
 ---
 
 ## PUSH MODE — send items to the board / decisions / notes
 
-Triggered by: "add to runnrr", "track this", "push these decisions", "log to board", "remember this", "save this note"
+**Triggered by:** "add to runnrr", "track this", "push these decisions", "log to board", "remember this", "save this note"
 
-### Step 1 — Extract all items from the conversation
+### Step 1 — Extract all items
 
-Scan the full conversation and identify **all** of the following. Use the right tool for each kind:
+Scan the conversation and identify each candidate. Pick the right tool for each kind:
 
-**Tasks** — things worth doing or tracking → `create_task`
-- Each item in a numbered or bulleted list is a **separate candidate** — never collapse a list into one summary item
-- Follow-up work, bugs to fix, features to build, things to verify
+- **Tasks** — things worth doing or tracking → `create_task`. Each item in a list is a separate candidate; never collapse a list into one.
+- **Decisions** — technical or product choices made, with rationale worth preserving → `save_decision({ title, description, area })`. `title` is verb-first, ≤10 words. `area` is Product / Engineering / GTM / Design / etc. Don't use `create_task` with a "Decision:" prefix — there's a dedicated tool.
+- **Practices / advice** — recommended ongoing practice → `create_task` with title prefixed `Practice:` (convention only; no dedicated tool).
+- **Notes** — content the user wants to keep ("remember this", "save this note", "take a note") → `create_file` with `subfolder: "notes"` (see NOTES MODE).
 
-**Decisions** — technical or product choices made, with rationale worth preserving → `save_decision`
-- Pass `title` (verb-first, ≤10 words, e.g. `"Cut visual roadmap from v1 scope"`), `description` (the why, 1–2 sentences), `area` (Product / Engineering / GTM / Design / etc.)
-- Don't use `create_task` with a "Decision:" prefix — there's a dedicated tool
-
-**Advice / practices** — recommended practices to keep → `create_task` with title prefixed `Practice:` (convention only; no dedicated tool)
-- Each bullet in a list = separate candidate
-
-**Notes** — things to remember (`"remember this"`, `"save this"`, `"note this"`) → `save_note`
-- Keep `content` concise — one clear sentence or short paragraph
-
-### Step 2 — Show confirmation list before pushing anything
+### Step 2 — Show a confirmation list before pushing
 
 ```
 Here's what I found to push to runnrr:
@@ -83,133 +55,98 @@ Here's what I found to push to runnrr:
 1. **[Task title]**
    [1-2 sentence description]
 
-2. **Decision: [Title]**
+2. **Decision: [Title]** (area: [Product/Engineering/etc])
    [Why — saved to the Decisions log, not the board]
 
-3. **Note: [first words]**
-   [Content — saved to Notes]
+3. **Note: [first line / title]**
+   [→ <vault>/notes/<slug>.md]
 
 Send all, or tell me which to keep / skip / edit / add?
 ```
 
 ### Step 3 — Push confirmed items
 
-**Via MCP** (preferred):
-```
-create_task({ title, description?, context? })
-save_decision({ title, description?, area? })
-save_note({ content })
-```
-
-**Via curl** (fallback):
-```bash
-# Tasks
-curl -s -X POST "${RUNNRR_URL:-https://runnrr.io}/api/tasks" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $RUNNRR_API_TOKEN" \
-  -d '{"title":"TITLE","description":"DESCRIPTION","context":"OPTIONAL_MARKDOWN"}'
-
-# Decisions
-curl -s -X POST "${RUNNRR_URL:-https://runnrr.io}/api/decisions" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $RUNNRR_API_TOKEN" \
-  -d '{"title":"TITLE","description":"WHY","area":"AREA"}'
-
-# Notes
-curl -s -X POST "${RUNNRR_URL:-https://runnrr.io}/api/notes" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $RUNNRR_API_TOKEN" \
-  -d '{"content":"CONTENT"}'
-```
-
-Report results with ✓/✗ per item after sending.
+Use the corresponding MCP tools. Report results with ✓/✗ per item.
 
 ---
 
 ## PULL MODE — get task context from the board
 
-Triggered by: "pick up [task name] from runnrr", "what's on my board", "work on the X card"
+**Triggered by:** "pick up [task name] from runnrr", "what's on my board", "work on the X card"
 
-**Via MCP** (preferred):
-1. `find_task_by_title({ query: "<task name>" })` — returns up to 5 ranked matches with id and status. **Use this rather than scanning `list_tasks` manually.**
+1. `find_task_by_title({ query: "<task name>" })` — returns up to 5 ranked matches. Use this rather than scanning `list_tasks` manually.
 2. If nothing matches or the user wants the whole board, fall back to `list_tasks` or `get_board_summary`.
 3. `get_task_context({ id: "..." })` — fetch full markdown context (description, saved context, recent activity).
-4. Present the context and ask: "Here's the context for [title]. What would you like me to do first?"
-
-**Via curl** (fallback):
-```bash
-# List tasks
-curl -s "${RUNNRR_URL:-https://runnrr.io}/api/tasks" \
-  -H "Authorization: Bearer $RUNNRR_API_TOKEN"
-
-# Get context for a specific task — returns { claudeCode, claudeChat, cowork }
-curl -s "${RUNNRR_URL:-https://runnrr.io}/api/tasks/TASK_ID/context" \
-  -H "Authorization: Bearer $RUNNRR_API_TOKEN"
-```
-
-The HTTP context endpoint returns `{ claudeCode, claudeChat, cowork }` — use the `cowork` field. (The MCP `get_task_context` tool returns the same content as plain markdown text without the envelope.)
+4. Present the context and ask: *"Here's the context for [title]. What would you like me to do first?"*
 
 ---
 
 ## UPDATE MODE — move tasks, mark them done, edit content
 
-Triggered by: "mark [task] done", "move [task] to [column]", "update runnrr", "log the result"
+**Triggered by:** "mark [task] done", "move [task] to [column]", "log the result"
 
-**Move to a column** — `status` is a column *title* (case-insensitive). Cannot target Inbox.
-```
-update_task({ id: "...", status: "Done" })
-```
-If the column doesn't exist, the response lists available columns.
-
-**Edit content**:
-```
-update_task({ id: "...", title?: "...", description?: "...", context?: "..." })
-```
-`context` replaces existing context entirely.
-
-**Via curl**:
-```bash
-curl -s -X PATCH "${RUNNRR_URL:-https://runnrr.io}/api/tasks/TASK_ID" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $RUNNRR_API_TOKEN" \
-  -d '{"status":"Done"}'
-```
+- **Mark done:** `complete_task({ id })`.
+- **Move to a column:** `move_task({ id, column: "Done" })`. The column name is case-insensitive against the user's actual columns. Cannot target the Inbox.
+- **Edit content:** `update_task({ id, title?, description?, context?, priority?, tags? })`. `context` replaces existing context; pass `null` for `priority` to clear it; pass `[]` for `tags` to clear all tags.
 
 ---
 
-## NOTES MODE — save and share notes (web-only)
+## NOTES MODE — save and read notes (= markdown files in your vault)
 
-Triggered by: "remember this", "save this", "note this for later", "share this note", "make this public"
+**Triggered by:** "save a note", "take a note", "log this as a note", "remember this"
 
-- **Save**: `save_note({ content })` — concise, source auto-set to `claude-code`.
-- **List**: `list_notes` — newest first, format `N. [source] (id: ID) content`.
-- **Share**: `share_note({ note_id })` — returns `https://runnrr.io/n/{token}` and flips the note public. If you don't have the id, call `list_notes` first.
+A note is a markdown file in the user's local vault under `<vault>/notes/`. Use `create_file`:
 
-Notes are not exposed by the native macOS app's local MCP. If the user is on native-only and asks to save or share a note, tell them this requires the runnrr web service and offer to push it via this skill instead.
+```
+create_file({
+  filename: "<slugified>.md",
+  content: "<the note body>",
+  subfolder: "notes"
+})
+```
+
+### Filename derivation
+
+1. Take the explicit title if given, otherwise the first 60 characters of the content.
+2. Slugify: lowercase, ASCII alphanumerics + hyphens, collapse runs.
+3. Append `-YYYY-MM-DD` (today's date in the user's locale).
+4. Add the `.md` extension.
+
+Examples:
+- *"save a note: standup highlights — restart picked up v0.4.2"* → `standup-highlights-restart-picked-up-v0-4-2-2026-04-27.md`
+- *"take a note titled Q2 plan"* → `q2-plan-2026-04-27.md`
+
+The local MCP handles **collision detection automatically** — if a file with the same name already exists at the target path, it auto-suffixes `-2`, `-3`, etc. and returns the final filename in the response. Confirm the actual filename to the user.
+
+### No vault configured
+
+If `create_file` returns the error message *"No file vault configured. Open runnrr and add a folder in Files → Add Folder."*, surface it to the user **verbatim** — do not paraphrase or reword.
+
+### Listing and reading
+
+- `list_files()` — list every indexed markdown file (filter by tags or folder if needed).
+- `read_file({ id })` or `read_file({ path })` — return the full content of a file.
+
+### Sharing a note (cloud-only)
+
+If the user asks to *"share this note"* or *"make this public"*, respond with:
+
+> *"Sharing a note publicly requires cloud sync. Open runnrr → Profile → Data & Sync to enable it, then ask again. Once sync is on, your notes become accessible at `https://runnrr.io/n/<token>`."*
+
+Do not attempt to share via this skill — the cloud surface isn't reachable from Claude Code in this plugin version.
 
 ---
 
 ## What this skill does NOT cover
 
-The native macOS `runnrr-native` app exposes its own MCP at `localhost:19840` with a different toolset. If the user mentions any of the following, route to the native MCP, not this skill:
-
-- File CRUD on registered folder vaults: `create_file`, `read_file`, `list_files`, `delete_file`, `attach_file`, `tag_file`
-- Column listing: `list_columns`
-- Tag listing: `list_tags`
-- Task lifecycle beyond status: `complete_task`, `move_task`, `delete_task`, `set_due_date`
-- Priority and tag fields on tasks
-- Granola scan (UI-only — not exposed via either MCP today)
+- **Granola scan** is UI-only — kicked off from the macOS app's Board view, not from the MCP.
+- **Public note sharing** is cloud-only and requires the runnrr.io UI to enable cloud sync first.
+- **Claude Chat integration** is a separate install path (`claude mcp add` against `https://runnrr.io/api/mcp` with a Bearer token from runnrr.io → Settings → Connect to Claude Chat). This skill is Claude-Code-specific.
 
 ---
 
-## Setup reminder
+## Setup
 
-If requests fail with a JSON-RPC error containing `"Missing or invalid API token"`:
-1. Show the user the **exact error message** from the response — it contains the setup URL and command
-2. Do NOT show raw API errors or stack traces
-3. Guide the user: "Visit https://runnrr.io/onboarding to get your token, then run the setup command it gives you."
+If a tool call fails with `connection refused` or returns no response: the runnrr macOS app isn't running. Tell the user to launch it — the local MCP server starts automatically on app launch and listens on port 19840.
 
-If requests fail with 401 or `Unauthorized`:
-- Same guidance as above — the token is missing or expired
-- Get it from: https://runnrr.io/onboarding
-- Set in environment: `export RUNNRR_API_TOKEN=your-token-here`
+The plugin auto-registers the local MCP server via `.mcp.json` — no manual `claude mcp add` is required.
