@@ -7,16 +7,28 @@ description: >
   "mark [task] done", "save a note", "save this note", "take a note", "log this as a note",
   "share this note", or any similar phrase about their runnrr Kanban board, decisions
   log, or notes.
-version: 0.5.0
+version: 0.6.0
 ---
 
 # Runnrr — Personal Kanban Board + Decisions + Notes
 
 Runnrr is a personal Kanban board that connects meetings (Granola), tasks, decisions, and notes to Claude. Everything lives locally in the runnrr macOS app and is reached through one MCP server.
 
-**One server, no routing.** This plugin registers a single MCP server, `runnrr-local`, at `http://localhost:19840/mcp`. It runs inside the runnrr-native macOS app and reads from the local SQLite database + on-disk markdown vault. No bearer token, no internet round-trip, no sign-in required for tools to work.
+**One server.** This plugin's tools all route through `runnrr-local`, an MCP server at `http://localhost:19840/mcp` running inside the runnrr macOS app. The app reads from a local SQLite database + on-disk markdown vault. No internet round-trip; no cloud sign-in needed for tools to work.
 
-If the runnrr macOS app isn't running, none of these tools will work — the user needs to launch the app.
+**Requires the runnrr Mac app.** Without the app installed and running, no MCP tools are reachable. Download at [runnrr.io/download](https://runnrr.io/download).
+
+**Bearer token required.** As of plugin v0.6.0, the local MCP server requires a per-machine bearer token (security: prevents any local process from calling `delete_task` etc.). The token is generated automatically by the Mac app on first launch and stored at `~/Library/Application Support/runnrr/mcp.token`. The app's onboarding shows the full `claude mcp add …` install command with the token inlined — copy and run it once.
+
+---
+
+## First-time setup
+
+If `runnrr-local` isn't registered with Claude Code yet (or if tool calls fail with `connection refused` / `401`), the user needs to run the install command. Walk them through:
+
+1. **Make sure the Mac app is running.** `runnrr.app` should be visible in `/Applications`. Launch it. The menu-bar icon (lime square) confirms it's up.
+2. **Copy the install command.** Open the runnrr menu-bar icon → **About runnrr** → **Setup** → copy the displayed `claude mcp add …` command. (Pre-1.0: the command is also visible in the onboarding flow's "Connect Claude Code" step.) The command embeds the per-machine bearer token, which is why we don't ship it as a static `.mcp.json`.
+3. **Paste into a terminal and run it once.** Claude Code now knows where the local MCP is and how to authenticate. No further setup needed across sessions.
 
 ---
 
@@ -31,6 +43,21 @@ If the runnrr macOS app isn't running, none of these tools will work — the use
 **Files (= notes):** `create_file`, `read_file`, `list_files`, `attach_file`, `delete_file`, `tag_file`
 
 Notes ARE markdown files in the user's local vault. There is no separate "notes" tool. When the user says *"save a note"*, use `create_file` with `subfolder: "notes"` and a slugified filename — see the NOTES MODE below for the exact pattern.
+
+---
+
+## Server-alive precheck (do this before invoking any tool)
+
+Tools fail in two distinct ways. Distinguish them upfront so the user gets the right fix:
+
+| Symptom | Cause | What to tell the user |
+|---|---|---|
+| MCP tools not registered / not visible in Claude Code | First-time setup not done | Walk them through "First-time setup" above. |
+| Tool call returns connection error (`refused`, `unreachable`) | Mac app isn't running | "Open `runnrr.app` from your Applications folder. The local MCP server starts automatically when the app launches." |
+| Tool call returns HTTP 401 / `Unauthorized — missing or invalid bearer token` | Bearer token mismatch (token rotated, or install command was run against an older token) | "Re-run the `claude mcp add …` install command from the runnrr Mac app's About → Setup. The token regenerates if you ever delete the `mcp.token` file." |
+| Tool call returns `No file vault configured` | User hasn't picked a vault folder yet | "Open runnrr → Files → Add Folder, pick a folder, then try again." Surface this **verbatim** — do not paraphrase. |
+
+If you don't know whether the server is reachable, optionally probe `curl -fsSL http://localhost:19840/mcp` once. The endpoint is unauthenticated for liveness checks and returns `{"status":"ok","server":"runnrr-local"}` when the app is running.
 
 ---
 
@@ -118,10 +145,6 @@ Examples:
 
 The local MCP handles **collision detection automatically** — if a file with the same name already exists at the target path, it auto-suffixes `-2`, `-3`, etc. and returns the final filename in the response. Confirm the actual filename to the user.
 
-### No vault configured
-
-If `create_file` returns the error message *"No file vault configured. Open runnrr and add a folder in Files → Add Folder."*, surface it to the user **verbatim** — do not paraphrase or reword.
-
 ### Listing and reading
 
 - `list_files()` — list every indexed markdown file (filter by tags or folder if needed).
@@ -142,11 +165,3 @@ Do not attempt to share via this skill — the cloud surface isn't reachable fro
 - **Granola scan** is UI-only — kicked off from the macOS app's Board view, not from the MCP.
 - **Public note sharing** is cloud-only and requires the runnrr.io UI to enable cloud sync first.
 - **Claude Chat integration** is a separate install path (`claude mcp add` against `https://runnrr.io/api/mcp` with a Bearer token from runnrr.io → Settings → Connect to Claude Chat). This skill is Claude-Code-specific.
-
----
-
-## Setup
-
-If a tool call fails with `connection refused` or returns no response: the runnrr macOS app isn't running. Tell the user to launch it — the local MCP server starts automatically on app launch and listens on port 19840.
-
-The plugin auto-registers the local MCP server via `.mcp.json` — no manual `claude mcp add` is required.

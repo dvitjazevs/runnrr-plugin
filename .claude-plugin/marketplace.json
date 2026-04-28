@@ -10,9 +10,9 @@
   "plugins": [
     {
       "name": "runnrr",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "source": "./plugin",
-      "description": "Personal Kanban board \u2014 push tasks, decisions, and notes from any Claude session"
+      "description": "Personal Kanban board — push tasks, decisions, and notes from any Claude session. Requires the runnrr Mac app (runnrr.io/download)."
     }
   ]
 }
