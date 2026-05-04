@@ -1,6 +1,6 @@
 {
   "name": "runnrr",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Requires the runnrr Mac app (runnrr.io/download). Push tasks, decisions, and notes from any Claude session; pull task context back into the conversation.",
   "author": {
     "name": "DV"

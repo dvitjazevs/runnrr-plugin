@@ -1,6 +1,6 @@
 {
   "name": "runnrr",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Personal Kanban board — push tasks, decisions, and notes from any Claude session. Requires the runnrr Mac app (runnrr.io/download).",
   "author": {
     "name": "Dmitrijs Vitjazevs"

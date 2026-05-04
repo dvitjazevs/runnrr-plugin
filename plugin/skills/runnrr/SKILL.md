@@ -7,7 +7,7 @@ description: >
   "mark [task] done", "save a note", "save this note", "take a note", "log this as a note",
   "share this note", or any similar phrase about their runnrr Kanban board, decisions
   log, or notes.
-version: 0.6.0
+version: 0.6.1
 ---
 
 # Runnrr — Personal Kanban Board + Decisions + Notes
@@ -94,6 +94,33 @@ Send all, or tell me which to keep / skip / edit / add?
 ### Step 3 — Push confirmed items
 
 Use the corresponding MCP tools. Report results with ✓/✗ per item.
+
+### Long task context — attach as .md file instead of stuffing the description
+
+A task description is for a 1-3 sentence summary. Substantial supporting material (a brief, a code dump, meeting notes, design rationale) belongs in a linked markdown file, not the description field.
+
+**Trigger this branch when either:**
+- The user explicitly asks for it: *"attach as md"*, *"attach as a file"*, *"put the context in a linked note"*, *"as an attached file"*
+- OR the body you'd otherwise put into `description` exceeds ~1500 characters
+
+Explicit user intent always wins — if they say "attach as md" with a short body, still attach it.
+
+**Flow:**
+
+1. `create_task({ title, description })` — `description` is a 1-3 sentence summary that points to the attached file (e.g., *"Full brief in attached file."*).
+2. `create_file({ filename: "<slug>-YYYY-MM-DD.md", content: <full body>, subfolder: "tasks" })` — capture the returned file `id`.
+3. `attach_file({ card_id: <new task id>, file_id: <file id from step 2> })` — link the file to the card.
+4. Confirm: `✓ Added task [title] with attached file [filename]`.
+
+**Filename derivation:** slugify the task title, append today's date in YYYY-MM-DD, add `.md`. Same rules as NOTES MODE. Collision handling is automatic — confirm the actual filename returned.
+
+**In the Step 2 confirmation list**, mark these entries so the user sees the intent before pushing:
+
+```
+1. **[Task title]** (+ attached file: <slug>-YYYY-MM-DD.md)
+   [1-2 sentence description that will go in the description field]
+   [→ separately: full body goes into the linked .md file]
+```
 
 ---
 

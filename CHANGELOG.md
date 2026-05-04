@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.1 — 2026-05-04
+
+**Skill addition — long task context as attached `.md` file:**
+
+PUSH MODE now supports attaching a task's supporting body as a linked markdown file in the user's vault, instead of stuffing it into the description field. Triggered explicitly ("attach as md", "attach as a file", "as an attached file") or automatically when the description body would exceed ~1500 characters. The flow: `create_task` (with a 1-3 sentence summary) → `create_file` (under a `tasks/` subfolder) → `attach_file` (link by `file_id`). The Step 2 confirmation list now flags these entries so the user sees the attach intent before pushing.
+
+No breaking changes; no MCP server changes required. Existing v0.6.0 install (bearer-token registration) continues to work — just `/plugin marketplace update runnrr` then `/reload-plugins` to pick up the new skill.
+
 ## v0.6.0 — 2026-04-28
 
 **Breaking:** Plugin no longer ships an auto-registering `.mcp.json`. The local MCP server now requires a per-machine bearer token (security: prevents any local process from invoking `delete_task` etc. on your board). Static auto-registration can't carry a per-machine secret, so registration moves to the runnrr Mac app's onboarding.
